@@ -24,6 +24,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31
 #define PRI_MAX 63
 
+extern struct list ready_list; // ready 상태인 스레드들 리스트
 struct thread
 {
 	// Owned by thread.c.

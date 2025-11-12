@@ -76,7 +76,7 @@ void sema_down(struct semaphore *sema)
 
 	while (sema->value == 0)
 	{
-		list_insert_ordered(&sema->waiters, &thread_current()->elem, compare_ready_priority, NULL);
+		list_push_back(&sema->waiters, &thread_current()->elem);
 		thread_block();
 	}
 
@@ -576,8 +576,6 @@ void remove_donations(struct lock *lock)
 void recalculate_priority(void)
 {
 	struct thread *curr = thread_current();
-
-	// 우선순위 재계산
 	int old_priority = curr->priority;
 
 	// 1단계: 스레드의 우선순위를 기본(original) 우선순위로 초기화
@@ -599,6 +597,13 @@ void recalculate_priority(void)
 			curr->priority = top_donator->priority;
 		}
 	}
+
+	// 우선순위 재계산
+	if (curr->status == THREAD_READY && old_priority != curr->priority)
+	{
+		list_remove(&curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, compare_ready_priority, NULL);
+	};
 }
 
 /**
@@ -706,7 +711,7 @@ void cond_wait(struct condition *cond, struct lock *lock)
 	sema_init(&waiter.semaphore, 0);
 
 	// waiters 리스트에 우선순위 순서로 삽입 (높은 우선순위가 앞에)
-	list_insert_ordered(&cond->waiters, &waiter.elem, compare_sema_priority, NULL);
+	list_push_back(&cond->waiters, &waiter.elem);
 
 	// 1단계: 락 해제 (다른 스레드가 공유 데이터에 접근 가능)
 	lock_release(lock);
@@ -768,8 +773,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 		// 동적 우선순위 변경 상황에 대응하기 위해 신호 직전 정렬
 		list_sort(&cond->waiters, compare_sema_priority, NULL);
 
-		// 맨 앞(최고 우선순위) semaphore_elem을 꺼내서
-		// 해당 스레드의 세마포어에 sema_up() 호출 → 스레드 깨움
+		// 맨 앞(최고 우선순위) semaphore_elem을 꺼내서 해당 스레드의 세마포어에 sema_up() 호출 → 스레드 깨움
 		sema_up(&list_entry(list_pop_front(&cond->waiters), struct semaphore_elem, elem)->semaphore);
 	}
 }

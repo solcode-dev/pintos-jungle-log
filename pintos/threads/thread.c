@@ -31,6 +31,7 @@ static long long user_ticks;	 // 유저 프로그램이 실행된 동안 누적�
 static unsigned thread_ticks; /// 마지막 yield 이후 경과된 타이머 틱 수
 
 bool thread_mlfqs; // MLFQ 방식 플래그
+struct list ready_list;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -428,6 +429,8 @@ bool compare_donation_priority(const struct list_elem *a, const struct list_elem
 /* 각 thread의 elem 멤버를 기준으로 우선순위를 비교하여 내림차순 정렬 */
 bool compare_ready_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
+	ASSERT(a != NULL);
+	ASSERT(b != NULL);
 	struct thread *thread_a = list_entry(a, struct thread, elem);
 	struct thread *thread_b = list_entry(b, struct thread, elem);
 	return thread_a->priority > thread_b->priority;
