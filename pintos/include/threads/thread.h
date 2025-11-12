@@ -18,85 +18,23 @@ enum thread_status
 	THREAD_DYING		/* About to be destroyed. */
 };
 
-/* Thread identifier type.
-	 You can redefine this to whatever type you like. */
 typedef int tid_t;
-#define TID_ERROR ((tid_t) - 1) /* Error value for tid_t. */
+#define TID_ERROR ((tid_t) - 1)
+#define PRI_MIN 0
+#define PRI_DEFAULT 31
+#define PRI_MAX 63
 
-/* Thread priorities. */
-#define PRI_MIN 0			 /* Lowest priority. */
-#define PRI_DEFAULT 31 /* Default priority. */
-#define PRI_MAX 63		 /* Highest priority. */
-
-/* A kernel thread or user process.
- *
- * Each thread structure is stored in its own 4 kB page.  The
- * thread structure itself sits at the very bottom of the page
- * (at offset 0).  The rest of the page is reserved for the
- * thread's kernel stack, which grows downward from the top of
- * the page (at offset 4 kB).  Here's an illustration:
- *
- *      4 kB +---------------------------------+
- *           |          kernel stack           |
- *           |                |                |
- *           |                |                |
- *           |                V                |
- *           |         grows downward          |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           |                                 |
- *           +---------------------------------+
- *           |              magic              |
- *           |            intr_frame           |
- *           |                :                |
- *           |                :                |
- *           |               name              |
- *           |              status             |
- *      0 kB +---------------------------------+
- *
- * The upshot of this is twofold:
- *
- *    1. First, `struct thread' must not be allowed to grow too
- *       big.  If it does, then there will not be enough room for
- *       the kernel stack.  Our base `struct thread' is only a
- *       few bytes in size.  It probably should stay well under 1
- *       kB.
- *
- *    2. Second, kernel stacks must not be allowed to grow too
- *       large.  If a stack overflows, it will corrupt the thread
- *       state.  Thus, kernel functions should not allocate large
- *       structures or arrays as non-static local variables.  Use
- *       dynamic allocation with malloc() or palloc_get_page()
- *       instead.
- *
- * The first symptom of either of these problems will probably be
- * an assertion failure in thread_current(), which checks that
- * the `magic' member of the running thread's `struct thread' is
- * set to THREAD_MAGIC.  Stack overflow will normally change this
- * value, triggering the assertion. */
-/* The `elem' member has a dual purpose.  It can be an element in
- * the run queue (thread.c), or it can be an element in a
- * semaphore wait list (synch.c).  It can be used these two ways
- * only because they are mutually exclusive: only a thread in the
- * ready state is on the run queue, whereas only a thread in the
- * blocked state is on a semaphore wait list. */
 struct thread
 {
-	/* Owned by thread.c. */
+	// Owned by thread.c.
 	tid_t tid;								 /* Thread identifier. */
 	enum thread_status status; /* Thread state. */
 	char name[16];						 /* Name (for debugging purposes). */
 	int priority;							 /* Priority. */
 
-	/* donate 관련 */
-	int original_priority;					/* 기부받기 전에, 원래 우선순위 */
-	struct list donators;						/* 나한테 기부한 쓰레드 목록 */
-	struct lock *holding_locks;			// 내가 보유한 locks리스트
+	// donate 관련
+	int original_priority;					// 기부받기 전 원래 우선순위
+	struct list donators;						// 나한테 기부한 쓰레드 목록
 	struct lock *waiting_lock;			// 내가 기다리는 locks
 	struct list_elem donation_elem; // donatior용 리스트에 사용
 
@@ -118,9 +56,6 @@ struct thread
 	unsigned magic;				/* Detects stack overflow. */
 };
 
-/* If false (default), use round-robin scheduler.
-	 If true, use multi-level feedback queue scheduler.
-	 Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
 void thread_init(void);
@@ -155,4 +90,4 @@ bool compare_ready_priority(const struct list_elem *a, const struct list_elem *b
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void preemption_by_priority(void);
 
-#endif /* threads/thread.h */
+#endif

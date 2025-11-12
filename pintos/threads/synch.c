@@ -1,8 +1,9 @@
-#include "threads/synch.h"
 #include <stdio.h>
 #include <string.h>
+#include "threads/synch.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#define MAX_DONATION_DEPTH 8
 
 /**
  * @brief 세마포어를 초기화하는 함수
@@ -26,13 +27,13 @@ void sema_init(struct semaphore *sema, unsigned value)
 }
 
 /**
- * @brief 세마포어의 "down" (P) 연산을 수행하는 함수
+ * @brief 세마포어의 down 연산을 수행하는 함수
  *
  * @param sema 대기 및 값을 감소시킬 세마포어의 포인터
  *
  * @details 세마포어의 값이 0이면 자원을 획득할 수 없으므로, 현재 스레드는
- *          waiters 리스트에 추가되고 thread_block()을 호출해 블록(잠듦)됩니다.
- *          값이 1 이상이 되면 깨어나서 값을 1 줄입니다.
+ *          waiters 리스트에 추가되고 thread_block()을 호출해 BLOCK된다.
+ *          값이 1 이상이 되면 깨어나서 값을 1 줄인다.
  *
  * @note 동작 순서:
  *       1. 인터럽트 비활성화 (원자성 보장)
@@ -63,8 +64,6 @@ void sema_init(struct semaphore *sema, unsigned value)
  * @see thread_block()
  * @see list_insert_ordered()
  * @see compare_ready_priority()
- *
- * @since Week08, 2025-11-10, Project 1 - priority-change TC (우선순위 삽입)
  */
 void sema_down(struct semaphore *sema)
 {
@@ -73,30 +72,19 @@ void sema_down(struct semaphore *sema)
 	ASSERT(sema != NULL);
 	ASSERT(!intr_context());
 
-	// 인터럽트 비활성화 (원자성 확보)
 	old_level = intr_disable();
 
-	// 세마포어 값이 0이면 waiters에 추가하고 블록
 	while (sema->value == 0)
 	{
-		// 기존: list_push_back(&sema->waiters, &thread_current()->elem);
-		// 개선: 우선순위 정렬 삽입
 		list_insert_ordered(&sema->waiters, &thread_current()->elem, compare_ready_priority, NULL);
 		thread_block();
 	}
 
-	// 값이 1 이상이면 1 감소 (자원 획득)
 	sema->value--;
 
-	// 인터럽트 복원
 	intr_set_level(old_level);
 }
 
-/* Down or "P" operation on a semaphore, but only if the
-	 semaphore is not already 0.  Returns true if the semaphore is
-	 decremented, false otherwise.
-
-	 This function may be called from an interrupt handler. */
 bool sema_try_down(struct semaphore *sema)
 {
 	enum intr_level old_level;
@@ -123,8 +111,8 @@ bool sema_try_down(struct semaphore *sema)
  * @param sema 값을 증가시킬 세마포어의 포인터
  *
  * @details sema->value를 1 증가시키고, waiters 리스트가 비어 있지 않으면
- *          우선순위가 가장 높은 스레드부터 깨웁니다.
- *          대기 중인 스레드는 thread_unblock()을 통해 ready_list에 추가됩니다.
+ *          우선순위가 가장 높은 스레드부터 깨운다.
+ *          대기 중인 스레드는 thread_unblock()을 통해 ready_list에 추가된다.
  *
  * @note 동작 순서:
  *       1. 인터럽트 비활성화로 원자성 보장
@@ -144,8 +132,6 @@ bool sema_try_down(struct semaphore *sema)
  * @see sema_down()
  * @see compare_ready_priority()
  * @see thread_unblock()
- *
- * @since Week08, 2025-11-10, Project 1 - priority-change TC (정렬/선점 추가)
  */
 void sema_up(struct semaphore *sema)
 {
@@ -164,7 +150,6 @@ void sema_up(struct semaphore *sema)
 		thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
 	}
 
-	// 세마포어 값 1 증가
 	sema->value++;
 
 	// 우선순위 기반 선점 스케줄링 체크
@@ -182,7 +167,7 @@ void sema_up(struct semaphore *sema)
  * @return true a가 b보다 우선순위가 높으면 true, 아니면 false
  *
  * @details semaphore_elem 구조체를 기반으로, 각 대기 semaphore의 첫 waiters(대기 스레드) 우선순위를 비교합니다.
- *          내부적으로 compare_ready_priority()를 호출하여 우선순위를 판정합니다.
+ *          내부적으로 compare_ready_priority()를 호출하여 우선순위를 판정.
  *
  * @note 사용 위치:
  *       - condition variable의 waiters 리스트를 정렬할 때 사용 (list_insert_ordered, list_sort)
@@ -190,17 +175,15 @@ void sema_up(struct semaphore *sema)
  *
  * @see semaphore_elem
  * @see compare_ready_priority()
- *
- * @since Week08, 2025-11-10, Project 1 - priority-change TC
  */
 bool compare_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
-	struct semaphore_elem *sa = list_entry(a, struct semaphore_elem, elem);
-	struct semaphore_elem *sb = list_entry(b, struct semaphore_elem, elem);
+	struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
+	struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
 
 	// 각 대기 semaphore에서 대기 중인 첫 스레드의 우선순위 비교
-	struct list_elem *ta = list_begin(&sa->semaphore.waiters);
-	struct list_elem *tb = list_begin(&sb->semaphore.waiters);
+	struct list_elem *ta = list_begin(&sema_a->semaphore.waiters);
+	struct list_elem *tb = list_begin(&sema_b->semaphore.waiters);
 	return compare_ready_priority(ta, tb, NULL);
 }
 
@@ -242,24 +225,13 @@ sema_test_helper(void *sema_)
  * @param lock 초기화할 락의 포인터
  *
  * @details 락을 사용 가능한 상태로 초기화합니다. 초기 상태에서는 어떤 스레드도
- *          락을 소유하지 않으며(holder = NULL), 내부 세마포어의 값은 1로 설정됩니다.
+ *          락을 소유하지 않으며(holder = NULL), 내부 세마포어의 값은 1로 설정된다.
  *
  * @note 락(Lock)의 특징:
  *       - 한 번에 하나의 스레드만 락을 소유 가능
  *       - 재귀적 사용 불가: 같은 스레드가 이미 보유한 락을 다시 획득할 수 없음
  *       - 소유자 개념: 락을 획득한 스레드만 해제 가능
  *       - 세마포어(초기값 1)를 기반으로 구현됨
- *
- * @note 락 vs 세마포어:
- *       ┌──────────────────┬─────────────────┬──────────────────┐
- *       │ 특징              │ 락 (Lock)        │ 세마포어           │
- *       ├──────────────────┼─────────────────┼──────────────────┤
- *       │ 초기값             │ 1 고정          │ 0 이상 임의값        │
- *       │ 소유자 개념         │ 있음            │ 없음               │
- *       │ 획득/해제 규칙       │ 같은 스레드      │ 다른 스레드 가능      │
- *       │ 동시 소유 가능       │ 1개만           │ 여러 개 가능        │
- *       │ 재진입             │ 불가            │ 해당 없음           │
- *       └──────────────────┴─────────────────┴──────────────────┘
  *
  * @note 락과 세마포어의 차이점:
  * 				 락은 상호 배제(mutual exclusion),
@@ -270,24 +242,19 @@ sema_test_helper(void *sema_)
  *       - 현재 락을 보유한 스레드가 같은 락을 다시 획득하려 하면 오류 발생
  *       - 재귀적 사용이 필요하다면 세마포어를 사용해야 함
  *
- * @warning lock 포인터가 NULL이면 ASSERT 실패로 커널 패닉이 발생합니다.
+ * @warning lock 포인터가 NULL이면 ASSERT 실패로 커널 패닉이 발생
  *
  * @see lock_acquire()
  * @see lock_release()
  * @see sema_init()
- *
- * @since Pintos Synchronization Primitives
  */
 void lock_init(struct lock *lock)
 {
-	// 락 포인터가 유효한지 검증
 	ASSERT(lock != NULL);
 
-	// 초기 상태: 어떤 스레드도 락을 소유하지 않음
 	lock->holder = NULL;
 
 	// 내부 세마포어를 1로 초기화
-	// (1 = 사용 가능, 0 = 다른 스레드가 사용 중)
 	sema_init(&lock->semaphore, 1);
 }
 
@@ -297,8 +264,8 @@ void lock_init(struct lock *lock)
  * @param lock 획득할 락의 포인터
  *
  * @details 현재 스레드가 락을 획득합니다. 락이 이미 다른 스레드에 의해 보유되어
- *          있다면, 우선순위 기부를 수행한 후 락이 해제될 때까지 블로킹합니다.
- *          락 획득에 성공하면 현재 스레드가 락의 소유자가 됩니다.
+ *          있다면, 우선순위 기부를 수행한 후 락이 해제될 때까지 블로킹한다.
+ *          락 획득에 성공하면 현재 스레드가 락의 소유자가 된다.
  *
  * @note 동작 순서:
  *       1. 락이 사용 중인지 확인 (lock->holder != NULL)
@@ -334,14 +301,12 @@ void lock_init(struct lock *lock)
  * @see lock_try_acquire()
  * @see donate_priority()
  * @see remove_donations()
- *
- * @since Week08, 2025-11-10, Project 1 - Priority Donation
  */
 void lock_acquire(struct lock *lock)
 {
 	ASSERT(lock != NULL);
-	ASSERT(!intr_context());										// 인터럽트 핸들러 아님
-	ASSERT(!lock_held_by_current_thread(lock)); // 재진입 불가
+	ASSERT(!intr_context());
+	ASSERT(!lock_held_by_current_thread(lock));
 
 	// 1. 락이 현재 다른 스레드에 의해 사용 중인가?
 	if (lock->holder != NULL)
@@ -373,45 +338,41 @@ void lock_acquire(struct lock *lock)
  * @param holder 우선순위를 기부받을 스레드 (락을 보유한 스레드)
  *
  * @details 현재 스레드가 락을 기다리는 동안, 해당 락을 보유한 스레드(holder)에게
- *          자신의 우선순위를 기부합니다. 만약 holder도 다른 락을 기다리고 있다면
- *          연쇄적으로(재귀적으로) 우선순위를 전파합니다.
+ *          자신의 우선순위를 기부한다. 만약 holder도 다른 락을 기다리고 있다면
+ *          연쇄적으로(재귀적으로) 우선순위를 전파
  *
  * @note Priority Donation 동작:
  *       1. 현재 스레드의 우선순위가 holder보다 높으면 기부
  *       2. holder의 priority를 현재 스레드의 priority로 상향 조정
  *       3. holder가 다른 락을 기다리고 있으면 그 락의 소유자에게도 기부
- *       4. 최대 MAX_DEPTH(8)까지 연쇄 기부 허용
+ *       4. 최대 MAX_DONATION_DEPTH(8)까지 연쇄 기부 허용
  *
- * @note MAX_DEPTH 제한: 8단계
+ * @note MAX_DONATION_DEPTH 제한: 8단계
  *
  * @note 종료 조건:
  *       - holder == NULL: 더 이상 기부할 대상이 없음
- *       - depth >= MAX_DEPTH: 최대 깊이 도달
+ *       - depth >= MAX_DONATION_DEPTH: 최대 깊이 도달
  *       - holder->waiting_lock == NULL: holder가 대기 중이 아님
  *
  * @warning 이 함수는 lock_acquire() 내에서 호출되며, 인터럽트가 비활성화된
- *          상태에서 실행되어야 합니다 (원자성 보장).
+ *          상태에서 실행되어야한다.
  *
  * @see lock_acquire()
  * @see remove_donations()
- * @see recaculate_priority()
- *
- * @since Week08, 2025-11-10, Project 1 - Priority Donation
+ * @see recalculate_priority()
  */
 void donate_priority(struct thread *holder)
 {
-	// printf("🟥 donate_priority()\n");
-	struct thread *curr_thread = thread_current();
+	struct thread *curr = thread_current();
 	int depth = 0;
-	const int MAX_DEPTH = 8; // 중첩 기부 최대 깊이 (무한 루프 방지)
 
 	// holder가 존재하고 최대 깊이에 도달하지 않았을 때까지 반복
-	while (holder != NULL && depth < MAX_DEPTH)
+	while (holder != NULL && depth < MAX_DONATION_DEPTH)
 	{
 		// 내 우선순위가 holder의 우선순위보다 높으면 기부
-		if (curr_thread->priority > holder->priority)
+		if (curr->priority > holder->priority)
 		{
-			holder->priority = curr_thread->priority;
+			holder->priority = curr->priority;
 		}
 		// 중첩 기부: holder가 다른 락을 기다리고 있으면 재귀적 기부
 		if (holder->waiting_lock != NULL)
@@ -429,7 +390,7 @@ void donate_priority(struct thread *holder)
 }
 
 /**
- * @brief 락 획득을 시도하되 블로킹하지 않는 함수 (Non-blocking)
+ * @brief 락 획득을 시도하되 블로킹하지 않는 함수
  *
  * @param lock 획득을 시도할 락의 포인터
  *
@@ -437,7 +398,7 @@ void donate_priority(struct thread *holder)
  * @return false 락이 이미 다른 스레드에 의해 보유된 경우 (획득 실패)
  *
  * @details 이 함수는 락 획득을 시도하지만, 실패해도 대기(블로킹)하지 않고
- *          즉시 false를 반환합니다. 성공 시 현재 스레드가 락의 소유자가 됩니다.
+ *          즉시 false를 반환한다다. 성공 시 현재 스레드가 락의 소유자가 된다.
  *
  * @note lock_acquire()와의 차이:
  *       - lock_acquire(): 락을 얻을 때까지 블로킹 (대기)
@@ -454,7 +415,7 @@ void donate_priority(struct thread *holder)
  *       - 인터럽트 핸들러에서 락 획득이 필요할 때 (블로킹 불가)
  *
  * @note 인터럽트 핸들러 안전:
- *       - 이 함수는 블로킹하지 않으므로 인터럽트 핸들러에서 호출 가능합니다.
+ *       - 이 함수는 블로킹하지 않으므로 인터럽트 핸들러에서 호출 가능
  *       - lock_acquire()는 블로킹하므로 인터럽트 핸들러에서 사용 불가
  *
  * @warning 다음 조건들이 만족되지 않으면 ASSERT 실패:
@@ -463,7 +424,7 @@ void donate_priority(struct thread *holder)
  *            (재진입 불가: 같은 스레드가 같은 lock을 두 번 획득할 수 없음)
  *
  * @warning	Priority Donation 미지원
- * 					- 우선순위 기부(priority donation) 로직이 적용되지 않았음!
+ * 					- TODO: 우선순위 기부(priority donation) 로직이 적용되지 않았음!
  *
  * @see lock_acquire()
  * @see lock_release()
@@ -512,11 +473,11 @@ bool lock_try_acquire(struct lock *lock)
  *          - 현재 스레드가 lock을 보유하고 있음 (lock_held_by_current_thread)
  *
  * @warning 인터럽트 핸들러는 락을 획득할 수 없으므로, 인터럽트 핸들러에서
- *          락을 해제하는 것도 의미가 없습니다.
+ *          락을 해제하는 것도 의미가 없다.
  *
  * @see lock_acquire()
  * @see remove_donations()
- * @see recaculate_priority()
+ * @see recalculate_priority()
  */
 void lock_release(struct lock *lock)
 {
@@ -527,7 +488,7 @@ void lock_release(struct lock *lock)
 	remove_donations(lock);
 
 	// 2. 남은 기부들 중 최고 우선순위로 현재 스레드의 우선순위 재계산
-	recaculate_priority();
+	recalculate_priority();
 
 	// 3. lock의 소유자를 제거하고 세마포어 up (대기 스레드 중 하나 깨움)
 	lock->holder = NULL;
@@ -540,9 +501,9 @@ void lock_release(struct lock *lock)
  * @param lock 기부를 제거할 락의 포인터
  *
  * @details 현재 스레드의 donators 리스트를 순회하며, 해제하려는 lock을
- *          기다리고 있던(waiting_lock == lock) 스레드들의 기부만 제거합니다.
+ *          기다리고 있던(waiting_lock == lock) 스레드들의 기부만 제거한다.
  *          같은 스레드가 여러 lock을 보유할 수 있으므로, 해제하는 lock과
- *          관련 없는 기부는 유지해야 합니다.
+ *          관련 없는 기부는 유지해야 한다.
  *
  * @note 선택적 기부 제거의 필요성:
  *       - 한 스레드가 여러 개의 lock을 동시에 보유 가능
@@ -562,12 +523,12 @@ void lock_release(struct lock *lock)
  */
 void remove_donations(struct lock *lock)
 {
-	struct thread *curr_thread = thread_current();
+	struct thread *curr = thread_current();
 	struct list_elem *e;
 
 	// donators 리스트 순회 (이 스레드에게 우선순위를 기부한 스레드들)
-	e = list_begin(&curr_thread->donators);
-	while (e != list_end(&curr_thread->donators))
+	e = list_begin(&curr->donators);
+	while (e != list_end(&curr->donators))
 	{
 		struct thread *donor = list_entry(e, struct thread, donation_elem);
 
@@ -589,45 +550,43 @@ void remove_donations(struct lock *lock)
  *
  * @details 이 함수는 현재 스레드의 우선순위를 original_priority(본래 우선순위)로
  *          초기화한 후, 다른 스레드들로부터 기부받은 우선순위들을 확인하여
- *          그 중 가장 높은 값과 비교합니다. 기부받은 우선순위가 더 높다면
- *          해당 값을 현재 스레드의 실행 우선순위로 설정합니다.
+ *          그 중 가장 높은 값과 비교한다. 기부받은 우선순위가 더 높다면
+ *          해당 값을 현재 스레드의 실행 우선순위로 설정한다.
  *
  * @note Priority Donation 메커니즘:
  *       - donators 리스트: 현재 스레드에게 우선순위를 기부한 스레드들의 목록
  *       - 이 리스트는 우선순위 내림차순으로 정렬되어 있어야 함 (front = 최고 우선순위)
  *       - 기부가 해제되거나 새로운 기부가 발생할 때마다 이 함수를 호출해야 함
  *
- * @warning 이 함수는 현재 스레드(thread_current())에만 적용됩니다.
+ * @warning 이 함수는 현재 스레드(thread_current())에만 적용된다.
  *          donators 리스트가 우선순위 순으로 정렬되어 있지 않으면
- *          올바른 우선순위를 계산할 수 없습니다.
+ *          올바른 우선순위를 계산할 수 없다.
  *
  * @see thread_set_priority()
  * @see lock_release()
  * @see lock_acquire()
- *
- * @since Week08, 2025-11-10, Project 1 - Priority Donation
  */
-void recaculate_priority(void)
+void recalculate_priority(void)
 {
-	struct thread *curr_thread = thread_current();
+	struct thread *curr = thread_current();
 
 	// 1단계: 스레드의 우선순위를 기본(original) 우선순위로 초기화
 	// (기부받은 우선순위를 모두 제거하고 원래 값으로 복원)
-	curr_thread->priority = curr_thread->original_priority;
+	curr->priority = curr->original_priority;
 
 	// 2단계: 기부자(donators) 리스트 확인
 	// 다른 스레드들이 이 스레드에게 우선순위를 기부했는지 체크
-	if (!list_empty(&curr_thread->donators))
+	if (!list_empty(&curr->donators))
 	{
 		// donators 리스트의 맨 앞 요소 가져오기
 		// (리스트는 우선순위 내림차순 정렬되어 있으므로 front = 최고 우선순위)
-		struct thread *top_donor = list_entry(list_front(&curr_thread->donators), struct thread, donation_elem);
+		struct thread *top_donor = list_entry(list_front(&curr->donators), struct thread, donation_elem);
 
 		// 3단계: 기부받은 우선순위와 원래 우선순위 비교
 		// 기부받은 우선순위가 더 높으면 그 값을 사용
-		if (top_donor->priority > curr_thread->priority)
+		if (top_donor->priority > curr->priority)
 		{
-			curr_thread->priority = top_donor->priority;
+			curr->priority = top_donor->priority;
 		}
 	}
 }
@@ -638,13 +597,11 @@ void recaculate_priority(void)
  * @param lock 확인할 락의 포인터
  *
  * @note 주의사항:
- *       - 이 함수는 **현재 스레드**에 대해서만 정확한 결과를 보장합니다.
+ *       - 이 함수는 현재 스레드에 대해서만 정확한 결과를 보장한다.
  *       - 다른 스레드가 락을 보유하고 있는지 테스트하는 것은 race condition을
- *         발생시킬 수 있으므로 사용하지 않아야 합니다.
+ *         발생시킬 수 있으므로 사용하지 않아야 한다.
  *       - 다른 스레드의 락 소유 상태는 테스트 시점과 결과 사용 시점 사이에
- *         변경될 수 있어 결과를 신뢰할 수 없습니다.
- *
- * @warning lock 포인터가 NULL이면 ASSERT 실패로 커널 패닉이 발생합니다.
+ *         변경될 수 있어 결과를 신뢰할 수 없다.
  *
  * @see lock_acquire()
  * @see lock_release()
@@ -652,10 +609,8 @@ void recaculate_priority(void)
  */
 bool lock_held_by_current_thread(const struct lock *lock)
 {
-	// 락 포인터가 유효한지 검증
 	ASSERT(lock != NULL);
 
-	// 락의 소유자(holder)가 현재 실행 중인 스레드와 동일한지 확인
 	return lock->holder == thread_current();
 }
 
@@ -665,9 +620,9 @@ bool lock_held_by_current_thread(const struct lock *lock)
  * @param cond 초기화할 condition variable의 포인터
  *
  * @details 이 함수는 condition variable의 waiters 리스트를 초기화하여
- *          대기 중인 스레드들을 관리할 준비를 합니다. Condition variable은
+ *          대기 중인 스레드들을 관리할 준비를 한다. Condition variable은
  *          한 코드 영역이 특정 조건을 신호(signal)하면, 협력하는 다른 코드가
- *          그 신호를 받아 적절한 동작을 수행할 수 있게 하는 동기화 메커니즘입니다.
+ *          그 신호를 받아 적절한 동작을 수행할 수 있게 하는 동기화 메커니즘.
  *
  * @note Condition Variable 동작 원리:
  *       - 신호 송신: cond_signal() 또는 cond_broadcast()로 대기 스레드를 깨움
@@ -678,8 +633,6 @@ bool lock_held_by_current_thread(const struct lock *lock)
  *       - Producer-Consumer 패턴: 생산자가 데이터를 넣으면 소비자에게 신호
  *       - 리소스 대기: 특정 리소스가 사용 가능할 때까지 대기
  *       - 이벤트 알림: 특정 이벤트 발생 시 대기 중인 스레드들에게 통지
- *
- * @warning cond 포인터가 NULL이면 ASSERT 실패로 커널 패닉이 발생합니다.
  *
  * @see cond_wait()
  * @see cond_signal()
@@ -695,7 +648,7 @@ void cond_init(struct condition *cond)
 }
 
 /**
- * @brief Condition variable에서 조건 신호를 대기하는 함수 (Mesa-style)
+ * @brief Condition variable에서 조건 신호를 대기하는 함수
  *
  * @param cond 대기할 condition variable의 포인터
  * @param lock 현재 스레드가 보유한 락의 포인터
@@ -707,26 +660,20 @@ void cond_init(struct condition *cond)
  *          4. LOCK을 다시 획득한 후 반환
  *
  * @note Mesa-style Semantics:
- *       - 신호(signal)와 대기(wait)가 원자적(atomic)이지 않습니다.
- *       - 깨어난 후 다른 스레드가 먼저 조건을 변경할 수 있습니다.
- *       - 따라서 깨어난 뒤 반드시 while 루프로 조건을 다시 확인해야 합니다.
+ *       - 신호(signal)와 대기(wait)가 원자적(atomic)이지 않다
+ *       - 깨어난 후 다른 스레드가 먼저 조건을 변경할 수 있다.
+ *       - 따라서 깨어난 뒤 반드시 while 루프로 조건을 다시 확인해야 한다
  *       - 권장 패턴: while (condition_not_met) { cond_wait(...); }
  *
  * @note Lock과 Condition Variable 관계:
- *       - 하나의 condition variable은 하나의 LOCK과만 연결됩니다.
- *       - 하나의 LOCK은 여러 개의 condition variable과 연결 가능합니다.
- *       - LOCK은 공유 데이터를 보호하고, condition variable은 대기/신호 메커니즘을 제공합니다.
+ *       - 하나의 condition variable은 하나의 LOCK과만 연결된다.
+ *       - 하나의 LOCK은 여러 개의 condition variable과 연결 가능.
+ *       - LOCK은 공유 데이터를 보호하고, condition variable은 대기/신호 메커니즘을 제공.
  *
  * @note Priority Scheduling 구현:
  *       - list_push_back() 대신 list_insert_ordered() 사용
  *       - 우선순위가 높은 스레드가 먼저 깨어나도록 정렬된 순서로 삽입
  *       - compare_sema_priority 함수로 세마포어의 우선순위 비교
- *
- * @warning 다음 조건들이 만족되지 않으면 ASSERT 실패:
- *          - cond != NULL
- *          - lock != NULL
- *          - 인터럽트 컨텍스트가 아님 (intr_context() == false)
- *          - 현재 스레드가 lock을 보유하고 있음
  *
  * @warning 이 함수는 스레드를 블록시키므로 인터럽트 핸들러에서 호출 금지!
  *
@@ -734,8 +681,6 @@ void cond_init(struct condition *cond)
  * @see cond_broadcast()
  * @see lock_acquire()
  * @see lock_release()
- *
- * @since Week08, 2025-11-10, Project 1 - priority-change TC (정렬 삽입 추가)
  */
 void cond_wait(struct condition *cond, struct lock *lock)
 {
@@ -751,7 +696,6 @@ void cond_wait(struct condition *cond, struct lock *lock)
 	sema_init(&waiter.semaphore, 0);
 
 	// waiters 리스트에 우선순위 순서로 삽입 (높은 우선순위가 앞에)
-	// 기존: list_push_back(&cond->waiters, &waiter.elem);
 	list_insert_ordered(&cond->waiters, &waiter.elem, compare_sema_priority, NULL);
 
 	// 1단계: 락 해제 (다른 스레드가 공유 데이터에 접근 가능)
@@ -771,8 +715,8 @@ void cond_wait(struct condition *cond, struct lock *lock)
  * @param lock 현재 스레드가 보유한 락의 포인터 (UNUSED 표시)
  *
  * @details 이 함수는 COND에서 대기 중인 스레드가 있다면, 그 중 하나를 선택하여
- *          깨웁니다. 대기 중인 스레드가 없으면 아무 동작도 하지 않습니다.
- *          LOCK은 이 함수를 호출하기 전에 반드시 획득되어 있어야 합니다.
+ *          깨운다. 대기 중인 스레드가 없으면 아무 동작도 하지 않는다.
+ *          LOCK은 이 함수를 호출하기 전에 반드시 획득되어 있어야 한다.
  *
  * @note 동작 순서:
  *       1. waiters 리스트가 비어있는지 확인
@@ -792,20 +736,13 @@ void cond_wait(struct condition *cond, struct lock *lock)
  *       - 신호를 받은 스레드는 ready_list에 추가되어 스케줄러에 의해 실행됨
  *       - 깨어난 스레드가 실행되기 전에 조건이 변경될 수 있음
  *
- * @warning 다음 조건들이 만족되지 않으면 ASSERT 실패:
- *          - cond != NULL
- *          - lock != NULL
- *          - 인터럽트 컨텍스트가 아님
- *          - 현재 스레드가 lock을 보유하고 있음
- *
  * @warning 인터럽트 핸들러는 락을 획득할 수 없으므로, 인터럽트 핸들러 내에서
- *          condition variable에 신호를 보내는 것은 의미가 없습니다.
+ *          condition variable에 신호를 보내는 것은 의미가 없다.
  *
  * @see cond_wait()
  * @see cond_broadcast()
  * @see sema_up()
  *
- * @since Week08, 2025-11-10, Project 1 - priority-change TC (정렬 추가)
  */
 void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 {
@@ -823,9 +760,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 
 		// 맨 앞(최고 우선순위) semaphore_elem을 꺼내서
 		// 해당 스레드의 세마포어에 sema_up() 호출 → 스레드 깨움
-		sema_up(&list_entry(list_pop_front(&cond->waiters),
-												struct semaphore_elem, elem)
-								 ->semaphore);
+		sema_up(&list_entry(list_pop_front(&cond->waiters), struct semaphore_elem, elem)->semaphore);
 	}
 }
 
@@ -835,9 +770,9 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
  * @param cond 신호를 보낼 condition variable의 포인터
  * @param lock 현재 스레드가 보유한 락의 포인터
  *
- * @details 이 함수는 COND에서 대기 중인 모든 스레드를 깨웁니다.
- *          내부적으로 waiters 리스트가 빌 때까지 cond_signal()을 반복 호출합니다.
- *          LOCK은 이 함수를 호출하기 전에 반드시 획득되어 있어야 합니다.
+ * @details 이 함수는 COND에서 대기 중인 모든 스레드를 깨운다
+ *          내부적으로 waiters 리스트가 빌 때까지 cond_signal()을 반복 호출한다.
+ *          LOCK은 이 함수를 호출하기 전에 반드시 획득되어 있어야 한다.
  *
  * @note cond_signal()과의 차이:
  *       - cond_signal(): 대기 중인 스레드 하나만 깨움
@@ -864,9 +799,6 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
  *          - lock != NULL
  *          - 인터럽트 컨텍스트가 아님
  *          - 현재 스레드가 lock을 보유하고 있음
- *
- * @warning 인터럽트 핸들러는 락을 획득할 수 없으므로, 인터럽트 핸들러 내에서
- *          condition variable에 신호를 보내는 것은 의미가 없습니다.
  *
  * @see cond_signal()
  * @see cond_wait()
