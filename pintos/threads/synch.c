@@ -373,6 +373,13 @@ void donate_priority(struct thread *holder)
 		if (curr->priority > holder->priority)
 		{
 			holder->priority = curr->priority;
+
+			// ready_list에 holder thread가 있으면 재정렬
+			if (holder->status == THREAD_READY)
+			{
+				list_remove(&holder->elem);
+				list_insert_ordered(&ready_list, &holder->elem, compare_ready_priority, NULL);
+			}
 		}
 		// 중첩 기부: holder가 다른 락을 기다리고 있으면 재귀적 기부
 		if (holder->waiting_lock != NULL)

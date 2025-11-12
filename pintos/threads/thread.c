@@ -18,8 +18,6 @@
 #define THREAD_MAGIC 0xcd6abf4b
 #define THREAD_BASIC 0xd42df210
 
-static struct list ready_list; // ready 상태인 스레드들 리스트
-
 static struct thread *idle_thread, *initial_thread; // idle 스레드와 최초(main) 스레드 포인터
 static struct lock tid_lock;												// TID 중복 방지를 위한 락
 static struct list dying_threads_queue;							// 종료 요청된 스레드(파괴 대기) 관리 리스트
