@@ -43,11 +43,6 @@ void test_priority_donate_sema(void)
   thread_create("high", PRI_DEFAULT + 5, h_thread_func, &ls);
   sema_up(&ls.sema);
   msg("Main thread finished.");
-
-#ifdef MEASURE_INSERT
-  extern void print_list_stats(void);
-  print_list_stats();
-#endif
 }
 
 static void

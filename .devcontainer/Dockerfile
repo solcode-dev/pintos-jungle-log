@@ -28,7 +28,10 @@ RUN echo "jungle ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/jungle
 USER jungle
 WORKDIR /home/jungle
 
-RUN echo "source /workspaces/jungle-week9/pintos/activate" >> /home/jungle/.bashrc
+RUN echo "source /workspaces/pintos-jungle-log/pintos/activate" >> /home/jungle/.bashrc
+
+# Add pintos utils to PATH permanently for all shells (including sh used by make)
+ENV PATH="/workspaces/pintos-jungle-log/pintos/utils:${PATH}"
 
 # Clone the repository
 # RUN git clone https://github.com/casys-kaist/pintos-kaist /home/jungle/pintos

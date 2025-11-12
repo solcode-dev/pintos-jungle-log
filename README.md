@@ -128,7 +128,6 @@ lock_release(&resource_lock);
    - **세마포어/조건 변수**: 대기열 삽입 시 `list_push_back()` O(1) 사용, 깨울 때만 정렬
    - **ready_list**: 항상 정렬 유지 (`list_insert_ordered()` 사용)
    - **이유**: 세마포어는 여러 스레드가 대기하다가 한 번에 하나씩만 깨우므로, 삽입마다 정렬하는 것보다 깨울 때 한 번만 정렬하는 것이 효율적
-   - **성능 측정**: `MEASURE_INSERT` 매크로로 `list_insert_ordered()` 호출 횟수 측정 가능
 
 2. **ready_list 동적 재정렬**:
    - 우선순위 기부/재계산 시 READY 상태 스레드의 ready_list 위치를 동적으로 재조정
@@ -153,7 +152,7 @@ lock_release(&resource_lock);
 - `pintos/threads/thread.c` - 스레드 초기화, 스케줄링, ready_list 정의
 
 ### 리스트 라이브러리
-- `pintos/include/lib/kernel/list.h` - 리스트 자료구조 인터페이스, `MEASURE_INSERT` 매크로 지원
+- `pintos/include/lib/kernel/list.h` - 리스트 자료구조 인터페이스
 - `pintos/lib/kernel/list.c` - 리스트 구현, 성능 측정 함수 포함
 
 ### 테스트 파일
@@ -171,7 +170,6 @@ lock_release(&resource_lock);
 - **동적 재정렬 추가**:
   - `donate_priority()`: holder가 READY 상태일 때 ready_list 재정렬
   - `recalculate_priority()`: 우선순위 변경 시 ready_list 재정렬
-- **성능 측정**: `MEASURE_INSERT` 매크로로 최적화 효과 측정 가능
 - **변수명 개선**: `top_donor` → `top_donator` 일관성 향상
 
 ## 향후 개선 사항

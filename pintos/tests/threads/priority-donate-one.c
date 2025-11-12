@@ -39,11 +39,6 @@ void test_priority_donate_one(void)
   lock_release(&lock);
   msg("acquire2, acquire1 must already have finished, in that order.");
   msg("This should be the last line before finishing this test.");
-
-#ifdef MEASURE_INSERT
-  extern void print_list_stats(void);
-  print_list_stats();
-#endif
 }
 
 static void
