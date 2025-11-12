@@ -182,9 +182,9 @@ bool compare_sema_priority(const struct list_elem *a, const struct list_elem *b,
 	struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
 
 	// 각 대기 semaphore에서 대기 중인 첫 스레드의 우선순위 비교
-	struct list_elem *ta = list_begin(&sema_a->semaphore.waiters);
-	struct list_elem *tb = list_begin(&sema_b->semaphore.waiters);
-	return compare_ready_priority(ta, tb, NULL);
+	struct list_elem *thread_a = list_begin(&sema_a->semaphore.waiters);
+	struct list_elem *thread_b = list_begin(&sema_b->semaphore.waiters);
+	return compare_ready_priority(thread_a, thread_b, NULL);
 }
 
 static void sema_test_helper(void *sema_);
